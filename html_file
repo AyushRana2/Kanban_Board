@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kanban Board with Dependencies & Filters</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Kanban Board</h1>
+
+    <form id="task-form">
+      <input type="text" id="task-title" placeholder="Task title" required />
+      <input type="date" id="task-deadline" required />
+      <select id="task-priority">
+        <option value="High">High</option>
+        <option value="Medium" selected>Medium</option>
+        <option value="Low">Low</option>
+      </select>
+      <button type="submit">Add Task</button>
+    </form>
+
+    <!-- ── Filters ── -->
+    <div class="filters">
+      <select id="filter-priority">
+        <option value="All">All Priorities</option>
+        <option value="High">High</option>
+        <option value="Medium">Medium</option>
+        <option value="Low">Low</option>
+      </select>
+
+      <select id="filter-status">
+        <option value="All">All Statuses</option>
+        <option value="todo">To Do</option>
+        <option value="in-progress">In Progress</option>
+        <option value="done">Done</option>
+      </select>
+
+      <input type="text" id="filter-text" placeholder="Search title..." />
+      <button id="clear-filters">Clear Filters</button>
+      <button id="reset-board" style="background: red; color: white;">Reset Board</button>
+
+    </div>
+  </header>
+
+  <main class="board">
+    <svg id="svg-lines"></svg>
+
+    <div class="column">
+      <h2>To Do <span class="progress" id="progress-todo">0%</span></h2>
+      <div class="task-container" id="todo"></div>
+    </div>
+
+    <div class="column">
+      <h2>In Progress <span class="progress" id="progress-in-progress">0%</span></h2>
+      <div class="task-container" id="in-progress"></div>
+    </div>
+
+    <div class="column">
+      <h2>Done <span class="progress" id="progress-done">0%</span></h2>
+      <div class="task-container" id="done"></div>
+    </div>
+  </main>
+
+  <script src="script.js"></script>
+</body>
+</html>
