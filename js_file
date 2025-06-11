@@ -1,0 +1,225 @@
+let tasks = JSON.parse(localStorage.getItem("tasks")) || [];
+
+document.getElementById("task-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const title = document.getElementById("task-title").value.trim();
+  const deadline = document.getElementById("task-deadline").value;
+  const priority = document.getElementById("task-priority").value;
+
+  if (!title || !deadline) return;
+
+  tasks.push({
+    id: Date.now().toString(),
+    title,
+    deadline,
+    priority,
+    status: "todo",
+    subtasks: [],
+    collapsed: false,
+    dependencies: []
+  });
+
+  saveAndRender();
+  e.target.reset();
+});
+
+document.querySelectorAll(".task-container").forEach(container => {
+  container.addEventListener("dragover", (e) => e.preventDefault());
+  container.addEventListener("drop", (e) => {
+    const taskId = e.dataTransfer.getData("text/plain");
+    const draggedTask = tasks.find(t => t.id === taskId);
+    const targetStatus = container.id;
+    draggedTask.status = targetStatus;
+    saveAndRender();
+  });
+});
+
+document.getElementById("clear-filters").addEventListener("click", () => {
+  document.getElementById("filter-priority").value = "All";
+  document.getElementById("filter-status").value = "All";
+  document.getElementById("filter-text").value = "";
+  renderBoard();
+});
+
+["filter-priority", "filter-status", "filter-text"].forEach(id => {
+  document.getElementById(id).addEventListener("input", renderBoard);
+});
+
+function renderBoard() {
+  const statuses = ["todo", "in-progress", "done"];
+  const renderedSubtaskIds = new Set();
+
+  statuses.forEach(status => {
+    const container = document.getElementById(status);
+    container.innerHTML = "";
+
+    let filteredTasks = getFilteredTasks(status);
+    filteredTasks = filteredTasks
+      .filter(t => !tasks.some(parent => parent.subtasks.includes(t.id)))
+      .sort(sortTasks);
+
+    filteredTasks.forEach(task => {
+      const taskEl = createTaskElement(task, renderedSubtaskIds);
+      container.appendChild(taskEl);
+    });
+  });
+
+  drawDependencies();
+  updateProgressBars();
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+}
+
+
+function createTaskElement(task, renderedSubtaskIds = new Set()) {
+  if (renderedSubtaskIds.has(task.id)) return document.createElement("div");
+  renderedSubtaskIds.add(task.id);
+
+  const div = document.createElement("div");
+  div.className = "task";
+  div.draggable = true;
+  div.id = task.id;
+
+  div.addEventListener("dragstart", (e) => {
+    e.dataTransfer.setData("text/plain", task.id);
+    e.dataTransfer.setData("source-task-id", task.id);
+    e.dataTransfer.effectAllowed = "move";
+  });
+
+  div.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const draggedId = e.dataTransfer.getData("text/plain");
+    if (draggedId === task.id) return;
+    const draggedTask = tasks.find(t => t.id === draggedId);
+
+    if (e.shiftKey) {
+      if (!task.dependencies.includes(draggedTask.id)) {
+        task.dependencies.push(draggedTask.id);
+      }
+    } else {
+      if (!task.subtasks.includes(draggedTask.id)) {
+        task.subtasks.push(draggedTask.id);
+      }
+    }
+
+    saveAndRender();
+  });
+
+  div.addEventListener("dragover", (e) => e.preventDefault());
+
+  div.innerHTML = `
+    <strong>${task.title}</strong>
+    <p>Due: ${task.deadline}</p>
+    <p>Priority: ${task.priority}</p>
+    ${task.subtasks.length > 0 ? `<button onclick="toggleSubtasks('${task.id}')">${task.collapsed ? 'Expand' : 'Collapse'} Subtasks</button>` : ''}
+  `;
+
+  if (!task.collapsed && task.subtasks.length > 0) {
+    const subContainer = document.createElement("div");
+    subContainer.className = "subtasks";
+    task.subtasks.forEach(subId => {
+      const sub = tasks.find(t => t.id === subId);
+      if (sub) subContainer.appendChild(createTaskElement(sub, renderedSubtaskIds));
+    });
+    div.appendChild(subContainer);
+  }
+
+  return div;
+}
+
+
+function toggleSubtasks(taskId) {
+  const task = tasks.find(t => t.id === taskId);
+  task.collapsed = !task.collapsed;
+  saveAndRender();
+}
+
+function saveAndRender() {
+  localStorage.setItem("tasks", JSON.stringify(tasks));
+  renderBoard();
+}
+
+function sortTasks(a, b) {
+  const priorityMap = { High: 1, Medium: 2, Low: 3 };
+  const d1 = new Date(a.deadline);
+  const d2 = new Date(b.deadline);
+  if (d1.getTime() !== d2.getTime()) return d1 - d2;
+  return priorityMap[a.priority] - priorityMap[b.priority];
+}
+
+function updateProgressBars() {
+  ["todo", "in-progress", "done"].forEach(status => {
+    const total = tasks.filter(t => t.status === status && isVisible(t)).length;
+    const done = tasks.filter(t => t.status === status && t.subtasks.every(id => {
+      const sub = tasks.find(t => t.id === id);
+      return sub && sub.status === "done";
+    }) && isVisible(t)).length;
+
+    const percent = total === 0 ? 0 : Math.round((done / total) * 100);
+    document.getElementById(`progress-${status}`).innerText = `${percent}%`;
+  });
+}
+
+function drawDependencies() {
+  const svg = document.getElementById("svg-lines");
+  svg.innerHTML = "";
+
+  tasks.forEach(task => {
+    task.dependencies.forEach(depId => {
+      const fromEl = document.getElementById(depId);
+      const toEl = document.getElementById(task.id);
+      if (fromEl && toEl) {
+        const fromBox = fromEl.getBoundingClientRect();
+        const toBox = toEl.getBoundingClientRect();
+        const svgBox = svg.getBoundingClientRect();
+
+        const x1 = fromBox.right - svgBox.left;
+        const y1 = fromBox.top + fromBox.height / 2 - svgBox.top;
+        const x2 = toBox.left - svgBox.left;
+        const y2 = toBox.top + toBox.height / 2 - svgBox.top;
+
+        const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        line.setAttribute("x1", x1);
+        line.setAttribute("y1", y1);
+        line.setAttribute("x2", x2);
+        line.setAttribute("y2", y2);
+        line.setAttribute("stroke", "red");
+        line.setAttribute("stroke-width", "2");
+        svg.appendChild(line);
+      }
+    });
+  });
+}
+
+function getFilteredTasks(status) {
+  const priority = document.getElementById("filter-priority").value;
+  const keyword = document.getElementById("filter-text").value.toLowerCase();
+  const filterStatus = document.getElementById("filter-status").value;
+
+  return tasks.filter(task => {
+    const matchStatus = task.status === status;
+    const matchPriority = priority === "All" || task.priority === priority;
+    const matchKeyword = task.title.toLowerCase().includes(keyword);
+    const matchFilterStatus = filterStatus === "All" || task.status === filterStatus;
+    return matchStatus && matchPriority && matchKeyword && matchFilterStatus;
+  });
+}
+
+function isVisible(task) {
+  const priority = document.getElementById("filter-priority").value;
+  const keyword = document.getElementById("filter-text").value.toLowerCase();
+  const filterStatus = document.getElementById("filter-status").value;
+  const matchPriority = priority === "All" || task.priority === priority;
+  const matchKeyword = task.title.toLowerCase().includes(keyword);
+  const matchStatus = filterStatus === "All" || task.status === filterStatus;
+  return matchPriority && matchKeyword && matchStatus;
+}
+
+// Initial render
+renderBoard();
+document.getElementById("reset-board").addEventListener("click", () => {
+  if (confirm("Are you sure you want to reset the board? This will delete all tasks.")) {
+    localStorage.removeItem("tasks");
+    tasks = [];
+    renderBoard();
+  }
+});
